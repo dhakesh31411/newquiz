@@ -1,7 +1,7 @@
 {
   "name": "quizmaster-api",
   "version": "1.0.0",
-  "private": true,
+  "type": "commonjs",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "bcryptjs": "^2.4.3",
