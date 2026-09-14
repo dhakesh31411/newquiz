@@ -17,11 +17,11 @@ app.get('/api/health', (req, res) => {
 });
 
 try {
-  const apiRoutes = require('../backend/routes/api');
+  const apiRoutes = require('../../backend/routes/api');
   app.use('/api', apiRoutes);
   app.use('/', apiRoutes);
 } catch (err) {
-  console.error('Error loading backend apiRoutes in root api:', err);
+  console.error('Error loading backend apiRoutes in frontend api:', err);
 }
 
 module.exports = app;
