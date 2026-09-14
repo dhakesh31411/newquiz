@@ -1106,6 +1106,7 @@ async function extractTextFromDocument(fileBuffer, filename, mimeType) {
   
   if (nameLower.endsWith('.pdf') || mimeType === 'application/pdf') {
     try {
+      const pdfParse = require('pdf-parse');
       const pdfData = await pdfParse(fileBuffer);
       if (pdfData.text && pdfData.text.trim()) return pdfData.text.trim();
     } catch (err) {
@@ -1115,6 +1116,7 @@ async function extractTextFromDocument(fileBuffer, filename, mimeType) {
 
   if (nameLower.endsWith('.docx') || nameLower.endsWith('.doc') || (mimeType && (mimeType.includes('word') || mimeType.includes('officedocument')))) {
     try {
+      const mammoth = require('mammoth');
       const docxData = await mammoth.extractRawText({ buffer: fileBuffer });
       if (docxData.value && docxData.value.trim()) return docxData.value.trim();
     } catch (err) {
