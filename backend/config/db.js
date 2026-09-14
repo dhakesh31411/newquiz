@@ -15,7 +15,7 @@ const dbConfig = {
   connectTimeout: 15000
 };
 
-// Flexible SSL configuration for cloud MySQL hosts (Aiven, PlanetScale, Railway, Supabase, TiDB, AWS RDS, etc.)
+// Flexible SSL configuration for cloud MySQL hosts
 if (
   process.env.DB_SSL === 'true' || 
   (process.env.DB_HOST && process.env.DB_HOST !== 'localhost' && process.env.DB_HOST !== '127.0.0.1')
@@ -25,7 +25,22 @@ if (
   };
 }
 
-const pool = mysql.createPool(dbConfig);
+let poolInstance = null;
+
+function getPool() {
+  if (!poolInstance) {
+    poolInstance = mysql.createPool(dbConfig);
+  }
+  return poolInstance;
+}
+
+const pool = new Proxy({}, {
+  get(target, prop) {
+    const activePool = getPool();
+    const value = activePool[prop];
+    return typeof value === 'function' ? value.bind(activePool) : value;
+  }
+});
 
 const checkConnection = async () => {
   try {
@@ -39,7 +54,6 @@ const checkConnection = async () => {
       message: 'Database connected successfully' 
     };
   } catch (error) {
-    // Safe server-side logging that never leaks DB_PASSWORD or secrets
     console.warn(`⚠️ MySQL Connection failed (Host: ${dbConfig.host}, Port: ${dbConfig.port}):`, error.message);
     return { 
       connected: false, 
@@ -54,5 +68,3 @@ module.exports = {
   pool,
   checkConnection
 };
-
-
