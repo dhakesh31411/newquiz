@@ -16,6 +16,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    app: 'SriGanesh Friends Circle',
+    version: '3.0.0',
+    timestamp: new Date().toISOString()
+  });
+});
+
 try {
   const apiRoutes = require('../backend/routes/api');
   app.use('/api', apiRoutes);
@@ -24,4 +33,6 @@ try {
   console.error('Error loading backend apiRoutes in root api:', err);
 }
 
-module.exports = app;
+module.exports = (req, res) => {
+  return app(req, res);
+};
