@@ -26,8 +26,8 @@ app.get('/api-info', (req, res) => {
   });
 });
 
-// Start Local Dev Server
-if (require.main === module || !process.env.VERCEL) {
+// Start Local Dev Server only when executed directly via node CLI
+if (require.main === module) {
   app.listen(PORT, async () => {
     console.log(`\n🚀 SriGanesh Friends Circle Backend server running on http://localhost:${PORT}`);
     console.log(`🔗 Health Check: http://localhost:${PORT}/api/health`);
