@@ -269,7 +269,7 @@ const initDatabase = async () => {
   }
 };
 
-initDatabase();
+// Note: initDatabase is called lazily on /api/db-status or first DB query to keep serverless imports instant
 
 // System Health API
 router.get('/health', (req, res) => {
