@@ -17,7 +17,7 @@ app.get('/api/health', (req, res) => {
 });
 
 try {
-  const apiRoutes = require('../../backend/routes/api');
+  const apiRoutes = require('../backend/routes/api');
   app.use('/api', apiRoutes);
   app.use('/', apiRoutes);
 } catch (err) {
