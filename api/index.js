@@ -1,24 +1,40 @@
-const express = require('express');
-const cors = require('cors');
-require('dotenv').config();
+let app;
+let initError = null;
 
-const apiRoutes = require('../backend/routes/api');
+try {
+  const express = require('express');
+  const cors = require('cors');
+  const path = require('path');
+  require('dotenv').config();
 
-const app = express();
+  const apiRoutes = require(path.join(__dirname, '../backend/routes/api'));
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app = express();
+  app.use(cors());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-app.use('/api', apiRoutes);
-app.use('/', apiRoutes);
+  app.use('/api', apiRoutes);
+  app.use('/', apiRoutes);
 
-app.get('/api-info', (req, res) => {
-  res.json({
-    message: 'Welcome to SriGanesh Friends Circle Backend API',
-    documentation: '/api/health',
-    status: 'running'
+  app.get('/api-info', (req, res) => {
+    res.json({
+      message: 'Welcome to SriGanesh Friends Circle Backend API',
+      documentation: '/api/health',
+      status: 'running'
+    });
   });
-});
+} catch (err) {
+  initError = err;
+}
 
-module.exports = app;
+module.exports = (req, res) => {
+  if (initError) {
+    return res.status(500).json({
+      success: false,
+      error: initError.message,
+      stack: initError.stack
+    });
+  }
+  return app(req, res);
+};
