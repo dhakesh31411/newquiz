@@ -114,6 +114,8 @@ export default function App() {
     } catch (err) {}
   };
 
+  const [dbTestStatus, setDbTestStatus] = useState({ loading: false, tested: false, result: null });
+
   // Check API health
   const checkConnectivity = async () => {
     setBackendStatus(prev => ({ ...prev, loading: true }));
@@ -134,7 +136,9 @@ export default function App() {
         setDbStatus({ 
           loading: false, 
           connected: dbData.database?.connected || false, 
-          message: dbData.database?.message || '' 
+          message: dbData.database?.message || '',
+          host: dbData.database?.host,
+          databaseName: dbData.database?.database
         });
       } else {
         setDbStatus({ loading: false, connected: false, message: 'DB endpoint unreachable' });
@@ -142,6 +146,17 @@ export default function App() {
     } catch (err) {
       setBackendStatus({ loading: false, online: false, data: null });
       setDbStatus({ loading: false, connected: false, message: 'Server unreachable' });
+    }
+  };
+
+  const runDbTest = async () => {
+    setDbTestStatus({ loading: true, tested: false, result: null });
+    try {
+      const res = await fetch('/api/health/db-test');
+      const data = await res.json();
+      setDbTestStatus({ loading: false, tested: true, result: data });
+    } catch (err) {
+      setDbTestStatus({ loading: false, tested: true, result: { success: false, message: err.message } });
     }
   };
 
@@ -351,9 +366,9 @@ export default function App() {
         )}
 
         {activeTab === 'status' && (
-          <div className="glass-panel" style={{ padding: '32px', maxWidth: '800px', margin: '0 auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="glass-panel" style={{ padding: '32px', maxWidth: '850px', margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+              <h2 style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
                 <Server color="var(--accent-primary)" size={24} /> System Diagnostics & Health
               </h2>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -366,19 +381,22 @@ export default function App() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '20px', marginBottom: '24px' }}>
               <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span style={{ fontWeight: 700, fontSize: '1rem' }}>Backend Express API</span>
                   {backendStatus.online ? (
-                    <span className="badge badge-success"><CheckCircle2 size={12} /> Online</span>
+                    <span className="badge badge-success"><CheckCircle2 size={12} /> Online (HTTP 200)</span>
                   ) : (
                     <span className="badge badge-danger"><AlertTriangle size={12} /> Offline</span>
                   )}
                 </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  {backendStatus.online ? `Backend API Active (${backendStatus.data?.app || 'SriGanesh Friends Circle'})` : 'Backend API offline or unreachable.'}
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                  {backendStatus.online ? `Serverless API active on Vercel (${backendStatus.data?.app || 'SriGanesh Friends Circle'})` : 'Backend API serverless function unreachable.'}
                 </p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  Endpoint: <code>/api/health</code> &bull; Version: {backendStatus.data?.version || '3.0.0'}
+                </div>
               </div>
 
               <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
@@ -387,13 +405,57 @@ export default function App() {
                   {dbStatus.connected ? (
                     <span className="badge badge-success"><CheckCircle2 size={12} /> Connected</span>
                   ) : (
-                    <span className="badge badge-warning"><Database size={12} /> Config Ready</span>
+                    <span className="badge badge-warning"><Database size={12} /> Disconnected / Config Needed</span>
                   )}
                 </div>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
                   {dbStatus.message || 'Configured via mysql2 pool.'}
                 </p>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                  Host: <code>{dbStatus.host || 'DB_HOST'}</code> &bull; DB: <code>{dbStatus.databaseName || 'DB_NAME'}</code>
+                </div>
               </div>
+            </div>
+
+            {/* Read/Write Verification Diagnostic Box */}
+            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '20px', borderRadius: '14px', border: '1px solid var(--border-color)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Database size={18} color="var(--accent-primary)" /> MySQL Live Read/Write Persistence Test
+                </h3>
+                <button 
+                  onClick={runDbTest} 
+                  disabled={dbTestStatus.loading}
+                  className="btn btn-primary" 
+                  style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                >
+                  <RefreshCw size={12} className={dbTestStatus.loading ? 'spin' : ''} /> Run Read/Write Test
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                Executes an end-to-end <code>INSERT → SELECT → VERIFY → DELETE</code> database test to confirm cloud MySQL persistence.
+              </p>
+
+              {dbTestStatus.tested && dbTestStatus.result && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  fontSize: '0.85rem',
+                  background: dbTestStatus.result.success ? 'rgba(34, 197, 94, 0.12)' : 'rgba(244, 63, 94, 0.12)',
+                  border: dbTestStatus.result.success ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(244, 63, 94, 0.3)',
+                  color: dbTestStatus.result.success ? 'var(--accent-emerald)' : 'var(--accent-rose)'
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px' }}>
+                    {dbTestStatus.result.success ? '✅ ' : '❌ '} {dbTestStatus.result.message}
+                  </div>
+                  {dbTestStatus.result.insertedId && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                      Verified Record ID: #{dbTestStatus.result.insertedId} &bull; Token: <code>{dbTestStatus.result.testToken}</code>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

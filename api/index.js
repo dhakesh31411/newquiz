@@ -33,6 +33,4 @@ try {
   console.error('Error loading backend apiRoutes in root api:', err);
 }
 
-module.exports = (req, res) => {
-  return app(req, res);
-};
+module.exports = app;

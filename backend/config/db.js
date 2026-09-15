@@ -12,7 +12,7 @@ const dbConfig = {
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
-  connectTimeout: 15000
+  connectTimeout: 3000
 };
 
 // Flexible SSL configuration for cloud MySQL hosts
