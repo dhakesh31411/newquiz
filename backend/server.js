@@ -13,6 +13,18 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Normalize Vercel serverless rewritten paths cleanly
+app.use((req, res, next) => {
+  if (req.query && req.query.path) {
+    const subpath = req.query.path.startsWith('/') ? req.query.path : '/' + req.query.path;
+    req.url = '/api' + subpath;
+  } else if (req.url.startsWith('/api/index.js')) {
+    const raw = req.url.replace('/api/index.js', '');
+    req.url = raw.startsWith('/api') ? raw : '/api' + (raw.startsWith('/') ? raw : '/' + raw);
+  }
+  next();
+});
+
 // Dual mount apiRoutes to handle both /api/* and rewritten serverless paths cleanly on Vercel
 app.use('/api', apiRoutes);
 app.use('/', apiRoutes);
