@@ -1,12 +1,10 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
-const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
-
-const dbHost = process.env.DB_HOST ? process.env.DB_HOST.trim() : (isProduction ? '' : 'localhost');
-const dbUser = process.env.DB_USER ? process.env.DB_USER.trim() : (isProduction ? '' : 'root');
+const dbHost = process.env.DB_HOST ? process.env.DB_HOST.trim() : '';
+const dbUser = process.env.DB_USER ? process.env.DB_USER.trim() : '';
 const dbPassword = process.env.DB_PASSWORD ? process.env.DB_PASSWORD : '';
-const dbName = process.env.DB_NAME ? process.env.DB_NAME.trim() : 'quizmaster_db';
+const dbName = process.env.DB_NAME ? process.env.DB_NAME.trim() : '';
 const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
 
 const dbConfig = {
@@ -40,7 +38,7 @@ let poolInstance = null;
 
 function getPool() {
   if (!dbConfig.host) {
-    throw new Error('Database Configuration Error: DB_HOST environment variable is missing.');
+    throw new Error('Database Configuration Error: DB_HOST environment variable is not configured.');
   }
 
   if (!poolInstance) {
@@ -59,12 +57,12 @@ const pool = new Proxy({}, {
 
 const checkConnection = async () => {
   if (!process.env.DB_HOST) {
-    const errMsg = 'DB_HOST environment variable is not configured. Please verify DB_HOST in Vercel Environment Variables.';
+    const errMsg = 'DB_HOST environment variable is not configured. Please set DB_HOST in Vercel Environment Variables.';
     return {
       connected: false,
       configured: false,
-      host: 'Not Configured',
-      database: dbName || 'Not Configured',
+      status: 'error',
+      database: 'disconnected',
       message: errMsg
     };
   }
@@ -72,22 +70,22 @@ const checkConnection = async () => {
   try {
     const activePool = getPool();
     const connection = await activePool.getConnection();
-    console.log(`✅ MySQL Database connected successfully! (Host: ${dbConfig.host})`);
+    console.log(`✅ MySQL Database connected successfully!`);
     connection.release();
     return { 
       connected: true, 
       configured: true,
-      host: dbConfig.host, 
-      database: dbConfig.database || 'Configured', 
+      status: 'ok',
+      database: 'connected', 
       message: 'Database connected successfully' 
     };
   } catch (error) {
-    console.warn(`⚠️ MySQL Connection failed (Host: ${dbConfig.host}):`, error.message);
+    console.warn(`⚠️ MySQL Connection failed:`, error.message);
     return { 
       connected: false, 
       configured: true,
-      host: dbConfig.host || 'Configured',
-      database: dbConfig.database || 'Configured',
+      status: 'error',
+      database: 'disconnected',
       message: `Database connection error: ${error.message}. Ensure MySQL credentials (DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT) are correctly configured in Vercel Environment Variables.` 
     };
   }

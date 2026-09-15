@@ -330,12 +330,37 @@ router.get('/debug-route', (req, res) => {
 // DB Status API
 router.get('/db-status', async (req, res) => {
   const dbStatus = await checkConnection();
-  if (dbStatus.connected) await initDatabase();
-  res.json({ status: 'ok', database: dbStatus });
+  if (dbStatus.connected) {
+    await initDatabase();
+    return res.status(200).json({
+      status: 'ok',
+      connected: true,
+      configured: true,
+      database: 'connected',
+      message: 'Database connected successfully'
+    });
+  } else {
+    return res.status(503).json({
+      status: 'error',
+      connected: false,
+      configured: dbStatus.configured,
+      database: 'disconnected',
+      message: dbStatus.message || 'Database connection unavailable'
+    });
+  }
 });
 
 // Safe Diagnostic Test Endpoint (INSERT -> SELECT -> VERIFY -> SELECT)
 router.get('/health/db-test', async (req, res) => {
+  if (!process.env.DB_HOST) {
+    return res.status(503).json({
+      connected: false,
+      database: 'disconnected',
+      success: false,
+      message: 'Database test FAILED: DB_HOST environment variable is missing.'
+    });
+  }
+
   try {
     const connection = await pool.getConnection();
     
@@ -349,41 +374,39 @@ router.get('/health/db-test', async (req, res) => {
 
     const testToken = `test_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
-    // 1. INSERT test record into MySQL
     const [insRes] = await connection.query('INSERT INTO _diagnostic_test (test_val) VALUES (?)', [testToken]);
     const insertId = insRes.insertId;
 
-    // 2. Immediately SELECT it from MySQL
     const [select1] = await connection.query('SELECT * FROM _diagnostic_test WHERE id = ?', [insertId]);
-
-    // 3. Second SELECT verification
     const [select2] = await connection.query('SELECT * FROM _diagnostic_test WHERE id = ?', [insertId]);
 
-    // Cleanup test record
     await connection.query('DELETE FROM _diagnostic_test WHERE id = ?', [insertId]);
-
     connection.release();
 
     const recordFound = select1.length > 0 && select2.length > 0 && select1[0].test_val === testToken;
 
-    res.json({
-      success: recordFound,
-      message: recordFound ? 'Database test PASSED: MySQL INSERT and SELECT read/write verified.' : 'Database test FAILED.',
-      mysqlHostConfigured: Boolean(process.env.DB_HOST),
-      mysqlDatabaseConfigured: Boolean(process.env.DB_NAME),
-      insertedId: insertId,
-      testToken,
-      select1Result: select1[0] || null,
-      select2Result: select2[0] || null,
-      persistenceVerified: recordFound
-    });
+    if (recordFound) {
+      res.status(200).json({
+        connected: true,
+        database: 'connected',
+        success: true,
+        message: 'Database test PASSED: MySQL INSERT and SELECT read/write verified.',
+        persistenceVerified: true
+      });
+    } else {
+      res.status(503).json({
+        connected: false,
+        database: 'error',
+        success: false,
+        message: 'Database test FAILED: Record verification failed.'
+      });
+    }
   } catch (err) {
-    res.status(500).json({
+    res.status(503).json({
+      connected: false,
+      database: 'disconnected',
       success: false,
-      message: `Database test FAILED: ${err.message}`,
-      error: err.message,
-      mysqlHostConfigured: Boolean(process.env.DB_HOST),
-      mysqlDatabaseConfigured: Boolean(process.env.DB_NAME)
+      message: `Database test FAILED: ${err.message}`
     });
   }
 });
