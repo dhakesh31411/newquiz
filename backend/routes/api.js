@@ -309,7 +309,7 @@ router.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     app: activeWebsiteName,
-    version: '3.0.0',
+    version: '3.1.0-FIX-TEST',
     timestamp: new Date().toISOString()
   });
 });
