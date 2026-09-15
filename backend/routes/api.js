@@ -314,6 +314,19 @@ router.get('/health', (req, res) => {
   });
 });
 
+// Diagnostic Debug Route
+router.get('/debug-route', (req, res) => {
+  res.json({
+    status: 'ok',
+    url: req.url,
+    path: req.path,
+    baseUrl: req.baseUrl,
+    originalUrl: req.originalUrl,
+    query: req.query,
+    headers: req.headers
+  });
+});
+
 // DB Status API
 router.get('/db-status', async (req, res) => {
   const dbStatus = await checkConnection();
