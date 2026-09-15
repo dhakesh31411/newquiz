@@ -1,9 +1,10 @@
 const app = require('../backend/server');
 
 module.exports = (req, res) => {
-  const targetUrl = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.url;
-  if (targetUrl && typeof targetUrl === 'string' && targetUrl.startsWith('/api')) {
-    req.url = targetUrl;
+  const forwardedUri = req.headers['x-forwarded-uri'] || req.headers['x-override-url'];
+  if (forwardedUri && typeof forwardedUri === 'string' && forwardedUri.startsWith('/api')) {
+    req.url = forwardedUri;
   }
   return app(req, res);
 };
+

@@ -15,7 +15,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Middleware to extract original requested path from Vercel headers
 app.use((req, res, next) => {
-  const vercelPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-override-url'];
+  const vercelPath = req.headers['x-forwarded-uri'] || req.headers['x-override-url'];
   if (vercelPath && typeof vercelPath === 'string' && vercelPath.startsWith('/api')) {
     req.url = vercelPath;
   }
