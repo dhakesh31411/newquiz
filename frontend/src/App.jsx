@@ -24,6 +24,7 @@ import QuizResult from './pages/QuizResult';
 import LeaderboardView from './pages/LeaderboardView';
 
 import ImageModal from './components/ImageModal';
+import BackgroundMusicPlayer from './components/BackgroundMusicPlayer';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('user'); // 'user' | 'leaderboard' | 'admin' | 'status'
@@ -80,6 +81,13 @@ export default function App() {
   const [appLogo, setAppLogo] = useState('/logo.jpg');
   const [showLogoModal, setShowLogoModal] = useState(false);
 
+  const [siteSettings, setSiteSettings] = useState({
+    websiteName: 'SriGanesh Friends Circle',
+    logoUrl: '/logo.jpg',
+    backgroundImage: { enabled: false, url: '', position: 'center', zoom: 1 },
+    backgroundMusic: { enabled: false, url: '', volume: 0.5 }
+  });
+
   const [backendStatus, setBackendStatus] = useState({ loading: true, online: false, data: null });
   const [dbStatus, setDbStatus] = useState({ loading: true, connected: false, message: '' });
 
@@ -102,7 +110,7 @@ export default function App() {
     }
   }, [theme]);
 
-  // Fetch active settings (website name & logo)
+  // Fetch active settings (website name, logo, background photo, background music)
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
@@ -110,6 +118,12 @@ export default function App() {
       if (data.success) {
         if (data.websiteName) setWebsiteName(data.websiteName);
         if (data.logoUrl) setAppLogo(data.logoUrl);
+        setSiteSettings({
+          websiteName: data.websiteName || 'SriGanesh Friends Circle',
+          logoUrl: data.logoUrl || '/logo.jpg',
+          backgroundImage: data.backgroundImage || { enabled: false, url: '', position: 'center', zoom: 1 },
+          backgroundMusic: data.backgroundMusic || { enabled: false, url: '', volume: 0.5 }
+        });
       }
     } catch (err) {}
   };
@@ -177,8 +191,42 @@ export default function App() {
     }
   }, []);
 
+  const bgImgConfig = siteSettings?.backgroundImage;
+  const isBgPhotoActive = Boolean(bgImgConfig?.enabled && bgImgConfig?.url);
+
   return (
-    <div className="container">
+    <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+      {/* Global Background Photo Container for All Users */}
+      {isBgPhotoActive && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: -1,
+            pointerEvents: 'none',
+            backgroundImage: `url(${bgImgConfig.url})`,
+            backgroundSize: bgImgConfig.position === 'cover' ? 'cover' : 'contain',
+            backgroundPosition: bgImgConfig.position || 'center',
+            backgroundRepeat: 'no-repeat',
+            transform: `scale(${bgImgConfig.zoom || 1})`,
+            transition: 'all 0.3s ease'
+          }}
+        >
+          {/* Semi-transparent dark overlay for high text contrast and legibility */}
+          <div 
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: theme === 'light' ? 'rgba(241, 245, 249, 0.82)' : 'rgba(15, 23, 42, 0.78)',
+              backdropFilter: 'blur(3px)'
+            }} 
+          />
+        </div>
+      )}
+
       {/* Top Navbar Header */}
       <header style={{ 
         display: 'flex', 
@@ -359,8 +407,10 @@ export default function App() {
             adminSession={adminSession} 
             setAdminSession={setAdminSession} 
             websiteName={websiteName}
+            siteSettings={siteSettings}
             onWebsiteNameUpdated={(name) => setWebsiteName(name)}
             onLogoUpdated={(newLogo) => setAppLogo(newLogo)}
+            onSettingsUpdated={fetchSettings}
             onBack={() => setActiveTab('user')}
           />
         )}
@@ -465,6 +515,9 @@ export default function App() {
         {websiteName} Application &bull; Timed Quiz & Leaderboard System
       </footer>
 
+      {/* Global Background Music Player Widget */}
+      <BackgroundMusicPlayer musicConfig={siteSettings?.backgroundMusic} />
+
       {showLogoModal && (
         <ImageModal 
           imageUrl={appLogo} 
@@ -475,3 +528,4 @@ export default function App() {
     </div>
   );
 }
+

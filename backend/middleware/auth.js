@@ -8,8 +8,15 @@ const verifyAdminToken = (req, res, next) => {
     return res.status(401).json({ success: false, message: 'Access denied. No authentication token provided.' });
   }
 
+  const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
+  const secret = process.env.JWT_SECRET || (!isProduction ? 'quizmaster_super_secret_jwt_key_2026' : '');
+
+  if (!secret) {
+    return res.status(500).json({ success: false, message: 'Server configuration error: JWT_SECRET environment variable is missing in production.' });
+  }
+
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'quizmaster_super_secret_jwt_key_2026');
+    const decoded = jwt.verify(token, secret);
     req.admin = decoded;
     next();
   } catch (error) {
@@ -20,3 +27,4 @@ const verifyAdminToken = (req, res, next) => {
 module.exports = {
   verifyAdminToken
 };
+

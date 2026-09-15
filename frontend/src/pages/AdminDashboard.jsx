@@ -7,8 +7,8 @@ import AdminAnalytics from './AdminAnalytics';
 import ImageModal from '../components/ImageModal';
 import ImageCropModal from '../components/ImageCropModal';
 
-export default function AdminDashboard({ adminSession, setAdminSession, websiteName = 'QuizMaster', onWebsiteNameUpdated, onLogoUpdated, onBack }) {
-  const [activeAdminTab, setActiveAdminTab] = useState('quizzes'); // 'quizzes' | 'logo' | 'users' | 'analytics'
+export default function AdminDashboard({ adminSession, setAdminSession, websiteName = 'QuizMaster', siteSettings, onWebsiteNameUpdated, onLogoUpdated, onSettingsUpdated, onBack }) {
+  const [activeAdminTab, setActiveAdminTab] = useState('quizzes'); // 'quizzes' | 'appearance' | 'users' | 'analytics'
 
   const [siteNameInput, setSiteNameInput] = useState(websiteName);
   const [savingSiteName, setSavingSiteName] = useState(false);
@@ -20,6 +20,40 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
   const [logoMessage, setLogoMessage] = useState({ type: '', text: '' });
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showLogoCropModal, setShowLogoCropModal] = useState(false);
+
+  // Background Photo State
+  const [bgPhotoUrl, setBgPhotoUrl] = useState(siteSettings?.backgroundImage?.url || '');
+  const [bgPhotoEnabled, setBgPhotoEnabled] = useState(siteSettings?.backgroundImage?.enabled ?? false);
+  const [bgPhotoPosition, setBgPhotoPosition] = useState(siteSettings?.backgroundImage?.position || 'center');
+  const [bgPhotoZoom, setBgPhotoZoom] = useState(siteSettings?.backgroundImage?.zoom || 1);
+  const [showPhotoCropModal, setShowPhotoCropModal] = useState(false);
+
+  // Background Music State
+  const [bgMusicUrl, setBgMusicUrl] = useState(siteSettings?.backgroundMusic?.url || '');
+  const [bgMusicEnabled, setBgMusicEnabled] = useState(siteSettings?.backgroundMusic?.enabled ?? false);
+  const [bgMusicVolume, setBgMusicVolume] = useState(siteSettings?.backgroundMusic?.volume ?? 0.5);
+  const [isPreviewAudioPlaying, setIsPreviewAudioPlaying] = useState(false);
+  const previewAudioRef = React.useRef(null);
+
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const [appearanceMessage, setAppearanceMessage] = useState({ type: '', text: '' });
+
+  // Sync props when siteSettings changes
+  useEffect(() => {
+    if (siteSettings) {
+      if (siteSettings.backgroundImage) {
+        setBgPhotoUrl(siteSettings.backgroundImage.url || '');
+        setBgPhotoEnabled(Boolean(siteSettings.backgroundImage.enabled));
+        setBgPhotoPosition(siteSettings.backgroundImage.position || 'center');
+        setBgPhotoZoom(siteSettings.backgroundImage.zoom || 1);
+      }
+      if (siteSettings.backgroundMusic) {
+        setBgMusicUrl(siteSettings.backgroundMusic.url || '');
+        setBgMusicEnabled(Boolean(siteSettings.backgroundMusic.enabled));
+        setBgMusicVolume(siteSettings.backgroundMusic.volume ?? 0.5);
+      }
+    }
+  }, [siteSettings]);
 
   // Handle Website Name Save
   const handleSaveWebsiteName = async (e) => {
@@ -48,6 +82,7 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
       if (res.ok && data.success) {
         setSiteNameMessage({ type: 'success', text: 'Website name updated successfully!' });
         if (onWebsiteNameUpdated) onWebsiteNameUpdated(data.websiteName);
+        if (onSettingsUpdated) onSettingsUpdated();
       } else {
         setSiteNameMessage({ type: 'error', text: data.message || 'Failed to update website name.' });
       }
@@ -68,6 +103,101 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
         setPreviewLogo(reader.result);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle local background photo file upload (JPG, JPEG, PNG, WEBP)
+  const handleBgPhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type.toLowerCase())) {
+      setAppearanceMessage({ type: 'error', text: 'Unsupported image format. Please select JPG, JPEG, PNG, or WEBP.' });
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setAppearanceMessage({ type: 'error', text: 'File size exceeds 15MB limit. Please select a smaller photo.' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setBgPhotoUrl(reader.result);
+      setAppearanceMessage({ type: 'info', text: 'Photo selected! Click "Save Appearance Settings" to apply globally.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Handle local background music file upload (MP3, WAV, OGG)
+  const handleBgMusicUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const validTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/x-wav'];
+    const isAudioExt = /\.(mp3|wav|ogg)$/i.test(file.name);
+
+    if (!validTypes.includes(file.type.toLowerCase()) && !isAudioExt) {
+      setAppearanceMessage({ type: 'error', text: 'Unsupported audio format. Please select an MP3, WAV, or OGG file.' });
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      setAppearanceMessage({ type: 'error', text: 'File size exceeds 15MB limit. Please select a smaller audio file.' });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setBgMusicUrl(reader.result);
+      setAppearanceMessage({ type: 'info', text: 'Audio file loaded! Click "Save Appearance Settings" to apply globally.' });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Save Appearance & Media Settings to Backend API / MySQL
+  const handleSaveAppearance = async (e) => {
+    if (e) e.preventDefault();
+    setAppearanceMessage({ type: '', text: '' });
+    setAppearanceSaving(true);
+
+    try {
+      const res = await fetch('/api/admin/appearance', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminSession.token}`
+        },
+        body: JSON.stringify({
+          websiteName: siteNameInput.trim(),
+          logoUrl: logoInput.trim() || undefined,
+          backgroundImage: {
+            url: bgPhotoUrl,
+            enabled: bgPhotoEnabled,
+            position: bgPhotoPosition,
+            zoom: bgPhotoZoom
+          },
+          backgroundMusic: {
+            url: bgMusicUrl,
+            enabled: bgMusicEnabled,
+            volume: bgMusicVolume
+          }
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setAppearanceMessage({ type: 'success', text: 'Website Background Photo & Music settings saved permanently to MySQL!' });
+        if (onSettingsUpdated) onSettingsUpdated();
+      } else {
+        setAppearanceMessage({ type: 'error', text: data.message || 'Failed to save appearance settings.' });
+      }
+    } catch (err) {
+      setAppearanceMessage({ type: 'error', text: 'Connection error while saving appearance settings.' });
+    } finally {
+      setAppearanceSaving(false);
     }
   };
 
@@ -98,6 +228,7 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
       if (res.ok && data.success) {
         setLogoMessage({ type: 'success', text: 'Application logo updated successfully!' });
         if (onLogoUpdated) onLogoUpdated(data.logoUrl);
+        if (onSettingsUpdated) onSettingsUpdated();
       } else {
         setLogoMessage({ type: 'error', text: data.message || 'Failed to update logo.' });
       }
@@ -105,6 +236,25 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
       setLogoMessage({ type: 'error', text: 'Connection error while saving logo.' });
     } finally {
       setSavingLogo(false);
+    }
+  };
+
+  const togglePreviewAudio = () => {
+    if (!bgMusicUrl) return;
+
+    if (isPreviewAudioPlaying) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+      }
+      setIsPreviewAudioPlaying(false);
+    } else {
+      if (!previewAudioRef.current || previewAudioRef.current.src !== bgMusicUrl) {
+        previewAudioRef.current = new Audio(bgMusicUrl);
+        previewAudioRef.current.volume = bgMusicVolume;
+      }
+      previewAudioRef.current.play()
+        .then(() => setIsPreviewAudioPlaying(true))
+        .catch(() => setIsPreviewAudioPlaying(false));
     }
   };
 
@@ -145,6 +295,14 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
         </button>
 
         <button 
+          onClick={() => setActiveAdminTab('appearance')}
+          className={`btn ${activeAdminTab === 'appearance' ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.85rem' }}
+        >
+          <Image size={16} /> Website Appearance & Backgrounds
+        </button>
+
+        <button 
           onClick={() => setActiveAdminTab('users')}
           className={`btn ${activeAdminTab === 'users' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ fontSize: '0.85rem' }}
@@ -165,7 +323,7 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
           className={`btn ${activeAdminTab === 'logo' ? 'btn-primary' : 'btn-secondary'}`}
           style={{ fontSize: '0.85rem' }}
         >
-          <Settings size={16} /> Website Settings & Logo
+          <Settings size={16} /> Website Title & Logo
         </button>
       </div>
 
@@ -174,17 +332,367 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
         <AdminQuizManager adminSession={adminSession} />
       )}
 
-      {/* VIEW 2: USER DIRECTORY & COMPLETE HISTORY */}
+      {/* VIEW 2: WEBSITE APPEARANCE (PHOTO & MUSIC) */}
+      {activeAdminTab === 'appearance' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {appearanceMessage.text && (
+            <div style={{
+              background: appearanceMessage.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : appearanceMessage.type === 'info' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+              border: `1px solid ${appearanceMessage.type === 'success' ? 'rgba(16, 185, 129, 0.3)' : appearanceMessage.type === 'info' ? 'rgba(99, 102, 241, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`,
+              color: appearanceMessage.type === 'success' ? 'var(--accent-emerald)' : appearanceMessage.type === 'info' ? 'var(--accent-primary)' : 'var(--accent-rose)',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              {appearanceMessage.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+              {appearanceMessage.text}
+            </div>
+          )}
+
+          {/* BACKGROUND PHOTO MANAGEMENT */}
+          <div className="glass-panel" style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ background: 'rgba(99, 102, 241, 0.15)', padding: '10px', borderRadius: '12px' }}>
+                  <Image size={22} color="var(--accent-primary)" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Background Photo Settings</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Upload, preview, crop, and position a custom background photo for all website users.</p>
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                <input 
+                  type="checkbox"
+                  checked={bgPhotoEnabled}
+                  onChange={(e) => setBgPhotoEnabled(e.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                />
+                Enable Background Photo for All Users
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '20px' }}>
+              {/* Photo Upload & URL Inputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                    Upload Photo (JPG, JPEG, PNG, WEBP)
+                  </label>
+                  <input 
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleBgPhotoUpload}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                    Or Direct Photo URL
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="https://images.unsplash.com/photo-..."
+                    value={bgPhotoUrl}
+                    onChange={(e) => setBgPhotoUrl(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Position & Zoom Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text-muted)' }}>
+                      Positioning
+                    </label>
+                    <select
+                      value={bgPhotoPosition}
+                      onChange={(e) => setBgPhotoPosition(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        color: 'var(--text-main)',
+                        fontSize: '0.85rem'
+                      }}
+                    >
+                      <option value="center">Center</option>
+                      <option value="cover">Cover Fill</option>
+                      <option value="top">Top</option>
+                      <option value="bottom">Bottom</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text-muted)' }}>
+                      Zoom ({bgPhotoZoom}x)
+                    </label>
+                    <input 
+                      type="range"
+                      min="1"
+                      max="2.5"
+                      step="0.1"
+                      value={bgPhotoZoom}
+                      onChange={(e) => setBgPhotoZoom(parseFloat(e.target.value))}
+                      style={{ width: '100%', accentColor: 'var(--accent-primary)', cursor: 'pointer' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                  {bgPhotoUrl && (
+                    <button 
+                      type="button" 
+                      onClick={() => setShowPhotoCropModal(true)}
+                      className="btn btn-secondary" 
+                      style={{ fontSize: '0.8rem', flex: 1 }}
+                    >
+                      <Crop size={14} /> Crop Photo
+                    </button>
+                  )}
+                  {bgPhotoUrl && (
+                    <button 
+                      type="button" 
+                      onClick={() => { setBgPhotoUrl(''); setAppearanceMessage({ type: 'info', text: 'Photo cleared. Save settings to confirm.' }); }}
+                      className="btn btn-secondary" 
+                      style={{ fontSize: '0.8rem', color: 'var(--accent-rose)' }}
+                    >
+                      Remove Photo
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Photo Live Preview Box */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.6)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '14px',
+                padding: '12px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative',
+                minHeight: '180px',
+                overflow: 'hidden'
+              }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dim)', marginBottom: '8px', zIndex: 2 }}>
+                  Live Background Preview
+                </div>
+                {bgPhotoUrl ? (
+                  <div style={{
+                    width: '100%',
+                    height: '140px',
+                    borderRadius: '10px',
+                    backgroundImage: `url(${bgPhotoUrl})`,
+                    backgroundSize: bgPhotoPosition === 'cover' ? 'cover' : 'contain',
+                    backgroundPosition: bgPhotoPosition,
+                    backgroundRepeat: 'no-repeat',
+                    transform: `scale(${bgPhotoZoom})`,
+                    transition: 'transform 0.2s ease',
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)'
+                  }} />
+                ) : (
+                  <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem', textAlign: 'center' }}>
+                    No background photo selected. Default gradient dark theme will be shown.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* BACKGROUND MUSIC MANAGEMENT */}
+          <div className="glass-panel" style={{ padding: '28px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ background: 'rgba(16, 185, 129, 0.15)', padding: '10px', borderRadius: '12px' }}>
+                  <BarChart3 size={22} color="var(--accent-emerald)" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Background Music Settings</h3>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Upload, preview, set volume, and enable background audio playback across the website.</p>
+                </div>
+              </div>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.9rem' }}>
+                <input 
+                  type="checkbox"
+                  checked={bgMusicEnabled}
+                  onChange={(e) => setBgMusicEnabled(e.target.checked)}
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
+                />
+                Enable Background Music for All Users
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                    Upload Music File (MP3, WAV, OGG)
+                  </label>
+                  <input 
+                    type="file"
+                    accept="audio/mpeg,audio/mp3,audio/wav,audio/ogg"
+                    onChange={handleBgMusicUpload}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-muted)' }}>
+                    Or Direct Music URL
+                  </label>
+                  <input 
+                    type="text"
+                    placeholder="https://example.com/audio.mp3"
+                    value={bgMusicUrl}
+                    onChange={(e) => setBgMusicUrl(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px', color: 'var(--text-muted)' }}>
+                    Default Volume ({Math.round(bgMusicVolume * 100)}%)
+                  </label>
+                  <input 
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={bgMusicVolume}
+                    onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
+                    style={{ width: '100%', accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
+
+              {/* Audio Preview Box */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.6)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '14px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '12px'
+              }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-dim)' }}>
+                  Audio Player Preview
+                </div>
+                {bgMusicUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={togglePreviewAudio}
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.85rem', padding: '8px 16px', borderRadius: '20px' }}
+                    >
+                      {isPreviewAudioPlaying ? 'Pause Audio Preview' : '▶ Play Audio Preview'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setBgMusicUrl(''); setIsPreviewAudioPlaying(false); }}
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', color: 'var(--accent-rose)' }}
+                    >
+                      Remove Music
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--text-dim)', fontSize: '0.85rem', textAlign: 'center' }}>
+                    No music file loaded. Select an MP3 or audio URL above.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* SAVE ALL APPEARANCE SETTINGS BUTTON */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+            <button
+              onClick={handleSaveAppearance}
+              disabled={appearanceSaving}
+              className="btn btn-primary"
+              style={{ fontSize: '1rem', padding: '12px 28px', borderRadius: '12px' }}
+            >
+              <Upload size={18} /> {appearanceSaving ? 'Saving Appearance to MySQL...' : 'SAVE ALL APPEARANCE SETTINGS'}
+            </button>
+          </div>
+
+          {showPhotoCropModal && (
+            <ImageCropModal
+              isOpen={showPhotoCropModal}
+              initialImage={bgPhotoUrl}
+              title="Crop Background Photo"
+              onClose={() => setShowPhotoCropModal(false)}
+              onCropComplete={(croppedUrl) => {
+                setBgPhotoUrl(croppedUrl);
+                setShowPhotoCropModal(false);
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      {/* VIEW 3: USER DIRECTORY & COMPLETE HISTORY */}
       {activeAdminTab === 'users' && (
         <AdminUserHistory adminSession={adminSession} />
       )}
 
-      {/* VIEW 3: ANALYTICS & CSV EXPORT */}
+      {/* VIEW 4: ANALYTICS & CSV EXPORT */}
       {activeAdminTab === 'analytics' && (
         <AdminAnalytics adminSession={adminSession} />
       )}
 
-      {/* VIEW 4: WEBSITE SETTINGS & LOGO CUSTOMIZATION */}
+      {/* VIEW 5: WEBSITE SETTINGS & LOGO CUSTOMIZATION */}
       {activeAdminTab === 'logo' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* WEBSITE NAME SETTINGS FORM */}
@@ -403,3 +911,4 @@ export default function AdminDashboard({ adminSession, setAdminSession, websiteN
     </div>
   );
 }
+

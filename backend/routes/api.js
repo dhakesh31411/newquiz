@@ -7,9 +7,46 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 const { pool, checkConnection } = require('../config/db');
 const { verifyAdminToken } = require('../middleware/auth');
 
-// Dynamic Application Settings (MySQL persistent with fallback default variables)
+// Dynamic Application Settings (MySQL persistent with default fallback state)
 let activeLogoUrl = '/logo.jpg';
 let activeWebsiteName = 'SriGanesh Friends Circle';
+
+let activeBgImageUrl = '';
+let activeBgImageEnabled = false;
+let activeBgImagePosition = 'center';
+let activeBgImageZoom = 1;
+
+let activeBgMusicUrl = '';
+let activeBgMusicEnabled = false;
+let activeBgMusicVolume = 0.5;
+
+const loadSettingsFromDB = async (dbConn) => {
+  try {
+    const queryExecutor = dbConn || pool;
+    const [rows] = await queryExecutor.query("SELECT setting_key, setting_value FROM settings");
+    const settingsMap = {};
+    rows.forEach(r => { settingsMap[r.setting_key] = r.setting_value; });
+
+    if (settingsMap.logo_url) activeLogoUrl = settingsMap.logo_url;
+    if (settingsMap.website_name) activeWebsiteName = settingsMap.website_name;
+
+    if (settingsMap.background_image_url !== undefined) activeBgImageUrl = settingsMap.background_image_url;
+    if (settingsMap.background_image_enabled !== undefined) {
+      activeBgImageEnabled = settingsMap.background_image_enabled === '1' || settingsMap.background_image_enabled === 'true' || settingsMap.background_image_enabled === true;
+    }
+    if (settingsMap.background_image_position !== undefined) activeBgImagePosition = settingsMap.background_image_position;
+    if (settingsMap.background_image_zoom !== undefined) activeBgImageZoom = parseFloat(settingsMap.background_image_zoom) || 1;
+
+    if (settingsMap.background_music_url !== undefined) activeBgMusicUrl = settingsMap.background_music_url;
+    if (settingsMap.background_music_enabled !== undefined) {
+      activeBgMusicEnabled = settingsMap.background_music_enabled === '1' || settingsMap.background_music_enabled === 'true' || settingsMap.background_music_enabled === true;
+    }
+    if (settingsMap.background_music_volume !== undefined) activeBgMusicVolume = parseFloat(settingsMap.background_music_volume) || 0.5;
+  } catch (err) {
+    // Fail silently and keep current active settings
+  }
+};
+
 
 const fallbackQuizzesList = [
   {
@@ -252,12 +289,8 @@ const initDatabase = async () => {
       await connection.query("ALTER TABLE settings MODIFY setting_value LONGTEXT;");
     } catch (err) {}
 
-    // Fetch existing persistent settings if present
-    const [logoRows] = await connection.query("SELECT setting_value FROM settings WHERE setting_key = 'logo_url'");
-    if (logoRows.length > 0) activeLogoUrl = logoRows[0].setting_value;
-
-    const [nameRows] = await connection.query("SELECT setting_value FROM settings WHERE setting_key = 'website_name'");
-    if (nameRows.length > 0) activeWebsiteName = nameRows[0].setting_value;
+    // Load all persistent settings from MySQL
+    await loadSettingsFromDB(connection);
 
     // Seed demo records into MySQL if DB is fresh
     await seedDemoDataIfEmpty(connection);
@@ -343,69 +376,167 @@ router.get('/health/db-test', async (req, res) => {
 });
 
 // ----------------------------------------------------
-// ⚙️ WEBSITE SETTINGS APIS (Website Name & Logo)
+// ⚙️ WEBSITE SETTINGS & APPEARANCE APIS
 // ----------------------------------------------------
 router.get('/settings', async (req, res) => {
   try {
-    const [logoRows] = await pool.query("SELECT setting_value FROM settings WHERE setting_key = 'logo_url'");
-    if (logoRows.length > 0) activeLogoUrl = logoRows[0].setting_value;
+    await loadSettingsFromDB();
+  } catch (err) {}
 
-    const [nameRows] = await pool.query("SELECT setting_value FROM settings WHERE setting_key = 'website_name'");
-    if (nameRows.length > 0) activeWebsiteName = nameRows[0].setting_value;
-
-    res.json({
-      success: true,
-      websiteName: activeWebsiteName,
-      logoUrl: activeLogoUrl
-    });
-  } catch (err) {
-    res.json({
-      success: true,
-      websiteName: activeWebsiteName,
-      logoUrl: activeLogoUrl
-    });
-  }
+  res.json({
+    success: true,
+    websiteName: activeWebsiteName,
+    logoUrl: activeLogoUrl,
+    backgroundImage: {
+      enabled: Boolean(activeBgImageEnabled),
+      url: activeBgImageUrl || '',
+      position: activeBgImagePosition || 'center',
+      zoom: Number(activeBgImageZoom) || 1
+    },
+    backgroundMusic: {
+      enabled: Boolean(activeBgMusicEnabled),
+      url: activeBgMusicUrl || '',
+      volume: Number(activeBgMusicVolume) || 0.5
+    }
+  });
 });
 
 router.get('/settings/logo', async (req, res) => {
   try {
-    const [logoRows] = await pool.query("SELECT setting_value FROM settings WHERE setting_key = 'logo_url'");
-    if (logoRows.length > 0) activeLogoUrl = logoRows[0].setting_value;
-
-    const [nameRows] = await pool.query("SELECT setting_value FROM settings WHERE setting_key = 'website_name'");
-    if (nameRows.length > 0) activeWebsiteName = nameRows[0].setting_value;
+    await loadSettingsFromDB();
   } catch (err) {}
 
   res.json({ success: true, logoUrl: activeLogoUrl, websiteName: activeWebsiteName });
 });
 
-// Protected Admin Endpoint to Update Website Settings (Website Name & Logo)
-router.post('/admin/settings', verifyAdminToken, async (req, res) => {
-  const websiteName = req.body.websiteName || req.body.website_name;
-  const logoUrl = req.body.logoUrl || req.body.logo_url;
+// Helper DB Upsert function for settings
+const upsertSetting = async (key, val) => {
+  const strVal = String(val);
+  await pool.query(
+    "INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = ?",
+    [key, strVal, strVal]
+  );
+};
+
+// Protected Admin Endpoint to Update Appearance Settings (Background Photo & Background Music)
+router.post('/admin/appearance', verifyAdminToken, async (req, res) => {
+  const { backgroundImage, backgroundMusic, websiteName, logoUrl } = req.body;
 
   try {
     if (websiteName && typeof websiteName === 'string' && websiteName.trim()) {
       activeWebsiteName = websiteName.trim();
-      await pool.query(
-        "INSERT INTO settings (setting_key, setting_value) VALUES ('website_name', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
-        [activeWebsiteName, activeWebsiteName]
-      );
+      await upsertSetting('website_name', activeWebsiteName);
     }
 
     if (logoUrl && typeof logoUrl === 'string' && logoUrl.trim()) {
       activeLogoUrl = logoUrl.trim();
-      await pool.query(
-        "INSERT INTO settings (setting_key, setting_value) VALUES ('logo_url', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
-        [activeLogoUrl, activeLogoUrl]
-      );
+      await upsertSetting('logo_url', activeLogoUrl);
+    }
+
+    if (backgroundImage) {
+      if (backgroundImage.url !== undefined) {
+        activeBgImageUrl = backgroundImage.url;
+        await upsertSetting('background_image_url', activeBgImageUrl);
+      }
+      if (backgroundImage.enabled !== undefined) {
+        activeBgImageEnabled = Boolean(backgroundImage.enabled);
+        await upsertSetting('background_image_enabled', activeBgImageEnabled ? '1' : '0');
+      }
+      if (backgroundImage.position !== undefined) {
+        activeBgImagePosition = String(backgroundImage.position);
+        await upsertSetting('background_image_position', activeBgImagePosition);
+      }
+      if (backgroundImage.zoom !== undefined) {
+        activeBgImageZoom = parseFloat(backgroundImage.zoom) || 1;
+        await upsertSetting('background_image_zoom', String(activeBgImageZoom));
+      }
+    }
+
+    if (backgroundMusic) {
+      if (backgroundMusic.url !== undefined) {
+        activeBgMusicUrl = backgroundMusic.url;
+        await upsertSetting('background_music_url', activeBgMusicUrl);
+      }
+      if (backgroundMusic.enabled !== undefined) {
+        activeBgMusicEnabled = Boolean(backgroundMusic.enabled);
+        await upsertSetting('background_music_enabled', activeBgMusicEnabled ? '1' : '0');
+      }
+      if (backgroundMusic.volume !== undefined) {
+        activeBgMusicVolume = parseFloat(backgroundMusic.volume) || 0.5;
+        await upsertSetting('background_music_volume', String(activeBgMusicVolume));
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Appearance & Media settings updated successfully in MySQL!',
+      websiteName: activeWebsiteName,
+      logoUrl: activeLogoUrl,
+      backgroundImage: {
+        enabled: Boolean(activeBgImageEnabled),
+        url: activeBgImageUrl,
+        position: activeBgImagePosition,
+        zoom: activeBgImageZoom
+      },
+      backgroundMusic: {
+        enabled: Boolean(activeBgMusicEnabled),
+        url: activeBgMusicUrl,
+        volume: activeBgMusicVolume
+      }
+    });
+  } catch (err) {
+    console.error('Error updating appearance settings:', err);
+    res.status(500).json({ success: false, message: 'Database error updating appearance settings: ' + err.message });
+  }
+});
+
+// Protected Admin Endpoint to Update Website Settings (Website Name & Logo & Media)
+router.post('/admin/settings', verifyAdminToken, async (req, res) => {
+  const websiteName = req.body.websiteName || req.body.website_name;
+  const logoUrl = req.body.logoUrl || req.body.logo_url;
+  const bgImg = req.body.backgroundImage || req.body.background_image;
+  const bgMusic = req.body.backgroundMusic || req.body.background_music;
+
+  try {
+    if (websiteName && typeof websiteName === 'string' && websiteName.trim()) {
+      activeWebsiteName = websiteName.trim();
+      await upsertSetting('website_name', activeWebsiteName);
+    }
+
+    if (logoUrl && typeof logoUrl === 'string' && logoUrl.trim()) {
+      activeLogoUrl = logoUrl.trim();
+      await upsertSetting('logo_url', activeLogoUrl);
+    }
+
+    if (bgImg) {
+      if (bgImg.url !== undefined) { activeBgImageUrl = bgImg.url; await upsertSetting('background_image_url', activeBgImageUrl); }
+      if (bgImg.enabled !== undefined) { activeBgImageEnabled = Boolean(bgImg.enabled); await upsertSetting('background_image_enabled', activeBgImageEnabled ? '1' : '0'); }
+      if (bgImg.position !== undefined) { activeBgImagePosition = String(bgImg.position); await upsertSetting('background_image_position', activeBgImagePosition); }
+      if (bgImg.zoom !== undefined) { activeBgImageZoom = parseFloat(bgImg.zoom) || 1; await upsertSetting('background_image_zoom', String(activeBgImageZoom)); }
+    }
+
+    if (bgMusic) {
+      if (bgMusic.url !== undefined) { activeBgMusicUrl = bgMusic.url; await upsertSetting('background_music_url', activeBgMusicUrl); }
+      if (bgMusic.enabled !== undefined) { activeBgMusicEnabled = Boolean(bgMusic.enabled); await upsertSetting('background_music_enabled', activeBgMusicEnabled ? '1' : '0'); }
+      if (bgMusic.volume !== undefined) { activeBgMusicVolume = parseFloat(bgMusic.volume) || 0.5; await upsertSetting('background_music_volume', String(activeBgMusicVolume)); }
     }
 
     res.json({
       success: true,
       message: 'Website settings updated successfully!',
       websiteName: activeWebsiteName,
-      logoUrl: activeLogoUrl
+      logoUrl: activeLogoUrl,
+      backgroundImage: {
+        enabled: Boolean(activeBgImageEnabled),
+        url: activeBgImageUrl,
+        position: activeBgImagePosition,
+        zoom: activeBgImageZoom
+      },
+      backgroundMusic: {
+        enabled: Boolean(activeBgMusicEnabled),
+        url: activeBgMusicUrl,
+        volume: activeBgMusicVolume
+      }
     });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Database error updating settings: ' + err.message });
@@ -423,10 +554,7 @@ router.post('/admin/logo', verifyAdminToken, async (req, res) => {
   activeLogoUrl = logoUrl.trim();
 
   try {
-    await pool.query(
-      "INSERT INTO settings (setting_key, setting_value) VALUES ('logo_url', ?) ON DUPLICATE KEY UPDATE setting_value = ?",
-      [activeLogoUrl, activeLogoUrl]
-    );
+    await upsertSetting('logo_url', activeLogoUrl);
     res.json({
       success: true,
       message: 'Application logo updated successfully!',
@@ -466,9 +594,16 @@ router.post('/admin/login', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid username or password.' });
     }
 
+    const isProduction = Boolean(process.env.VERCEL || process.env.NODE_ENV === 'production');
+    const secret = process.env.JWT_SECRET || (!isProduction ? 'quizmaster_super_secret_jwt_key_2026' : '');
+
+    if (!secret) {
+      return res.status(500).json({ success: false, message: 'Server authentication configuration error: JWT_SECRET is missing.' });
+    }
+
     const token = jwt.sign(
       { id: adminRecord.id, username: adminRecord.username, role: 'admin' },
-      process.env.JWT_SECRET || 'quizmaster_super_secret_jwt_key_2026',
+      secret,
       { expiresIn: '24h' }
     );
 
@@ -482,6 +617,7 @@ router.post('/admin/login', async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error during admin login: ' + error.message });
   }
 });
+
 
 // User Registration & Authentication (Strict MySQL - No Mock Fallbacks)
 router.post('/users/register', async (req, res) => {
@@ -544,7 +680,7 @@ router.get('/users/me/:userId', async (req, res) => {
 router.get('/quizzes', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM quizzes WHERE is_active = 1 ORDER BY is_quiz_of_day DESC, id DESC');
-    const quizzes = rows.length > 0 ? rows : fallbackQuizzesList;
+    const quizzes = rows;
     const quizOfDay = quizzes.find(q => q.is_quiz_of_day) || quizzes[0] || null;
 
     res.json({

@@ -4,7 +4,7 @@ import LogoHeader from '../components/LogoHeader';
 import BackHeader from '../components/BackHeader';
 import AdminDashboard from './AdminDashboard';
 
-export default function AdminLogin({ adminSession, setAdminSession, websiteName = 'QuizMaster', onWebsiteNameUpdated, onLogoUpdated, onBack }) {
+export default function AdminLogin({ adminSession, setAdminSession, websiteName = 'QuizMaster', siteSettings, onWebsiteNameUpdated, onLogoUpdated, onSettingsUpdated, onBack }) {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,8 +51,10 @@ export default function AdminLogin({ adminSession, setAdminSession, websiteName 
         adminSession={adminSession} 
         setAdminSession={setAdminSession} 
         websiteName={websiteName}
+        siteSettings={siteSettings}
         onWebsiteNameUpdated={onWebsiteNameUpdated}
-        onLogoUpdated={onLogoUpdated} 
+        onLogoUpdated={onLogoUpdated}
+        onSettingsUpdated={onSettingsUpdated}
         onBack={onBack}
       />
     );
