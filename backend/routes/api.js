@@ -367,10 +367,10 @@ router.get('/health/db-test', async (req, res) => {
     const recordFound = select1.length > 0 && select2.length > 0 && select1[0].test_val === testToken;
 
     res.json({
-      success: true,
+      success: recordFound,
       message: recordFound ? 'Database test PASSED: MySQL INSERT and SELECT read/write verified.' : 'Database test FAILED.',
-      mysqlHost: process.env.DB_HOST || 'localhost',
-      mysqlDatabase: process.env.DB_NAME || 'quizmaster_db',
+      mysqlHostConfigured: Boolean(process.env.DB_HOST),
+      mysqlDatabaseConfigured: Boolean(process.env.DB_NAME),
       insertedId: insertId,
       testToken,
       select1Result: select1[0] || null,
@@ -382,8 +382,8 @@ router.get('/health/db-test', async (req, res) => {
       success: false,
       message: `Database test FAILED: ${err.message}`,
       error: err.message,
-      mysqlHost: process.env.DB_HOST || 'localhost',
-      mysqlDatabase: process.env.DB_NAME || 'quizmaster_db'
+      mysqlHostConfigured: Boolean(process.env.DB_HOST),
+      mysqlDatabaseConfigured: Boolean(process.env.DB_NAME)
     });
   }
 });

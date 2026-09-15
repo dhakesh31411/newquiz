@@ -150,6 +150,7 @@ export default function App() {
         setDbStatus({ 
           loading: false, 
           connected: dbData.database?.connected || false, 
+          configured: dbData.database?.configured || false,
           message: dbData.database?.message || '',
           host: dbData.database?.host,
           databaseName: dbData.database?.database
@@ -462,7 +463,7 @@ export default function App() {
                   {dbStatus.message || 'Configured via mysql2 pool.'}
                 </p>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                  Host: <code>{dbStatus.host || 'DB_HOST'}</code> &bull; DB: <code>{dbStatus.databaseName || 'DB_NAME'}</code>
+                  Host: <code>{dbStatus.host || (dbStatus.configured ? 'Configured' : 'Not Configured')}</code> &bull; DB: <code>{dbStatus.databaseName || (dbStatus.configured ? 'Configured' : 'Not Configured')}</code>
                 </div>
               </div>
             </div>
