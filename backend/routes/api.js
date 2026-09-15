@@ -337,7 +337,8 @@ router.get('/db-status', async (req, res) => {
       connected: true,
       configured: true,
       database: 'connected',
-      message: 'Database connected successfully'
+      message: 'Database connected successfully',
+      diagnostics: dbStatus.diagnostics
     });
   } else {
     return res.status(503).json({
@@ -345,7 +346,8 @@ router.get('/db-status', async (req, res) => {
       connected: false,
       configured: dbStatus.configured,
       database: 'disconnected',
-      message: dbStatus.message || 'Database connection unavailable'
+      message: dbStatus.message || 'Database connection unavailable',
+      diagnostics: dbStatus.diagnostics
     });
   }
 });
