@@ -13,6 +13,15 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Middleware to extract original requested path from Vercel headers
+app.use((req, res, next) => {
+  const vercelPath = req.headers['x-matched-path'] || req.headers['x-forwarded-uri'] || req.headers['x-override-url'];
+  if (vercelPath && typeof vercelPath === 'string' && vercelPath.startsWith('/api')) {
+    req.url = vercelPath;
+  }
+  next();
+});
+
 // Dual mount apiRoutes to handle both /api/* and rewritten serverless paths cleanly on Vercel
 app.use('/api', apiRoutes);
 app.use('/', apiRoutes);
